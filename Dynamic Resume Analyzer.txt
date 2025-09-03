@@ -1,4 +1,4 @@
 Dynamic Resume Analyzer.
 A service that parses uploaded resumes (text), identifies sections (e.g., skills, education), and flags missing common elements. The project uses regex-based parsing, section-mapping logic, and feedback generation.
-Frontend: React.js
+Frontend: React.js, html, css, javascript
 Backend: Firebase
