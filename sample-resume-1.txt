@@ -1,0 +1,22 @@
+Resume - 01
+
+John Doe  
+Email: johndoe@gmail.com | Phone: +1-555-123-4567 | GitHub: github.com/johndoe  
+
+Education  
+Bachelor of Technology in Computer Science, XYZ University, 2019  
+
+Skills  
+- Programming: Python, Node.js, Java  
+- Databases: PostgreSQL, MongoDB, MySQL  
+- Tools: Git, GitHub, Docker, AWS  
+- REST API Development, Microservices  
+
+Experience  
+Software Engineer, ABC Corp (2020–Present)  
+- Developed RESTful APIs in Node.js used by 10,000+ users.  
+- Migrated legacy services to AWS-based microservices, improving scalability.  
+- Collaborated with frontend and product teams to deliver features on time.  
+
+Projects  
+Task Management API – Built a microservice-based backend using Node.js and PostgreSQL.  
