@@ -58,3 +58,5 @@ DRA-SR-002: Resume data shall be automatically deleted after 5 days of inactivit
 DRA-SR-003: Access to resume data shall require user authentication with strong password requirements
 
 DRA-SR-004: All security events shall be logged with user ID, timestamp, and action details
+
+TO RUN AND EXECUTE: NPM START
