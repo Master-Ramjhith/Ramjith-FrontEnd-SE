@@ -36,31 +36,51 @@ body {
   border-bottom-right-radius: 20px;
   animation: fadeDown 0.8s ease-in-out;
 }
-.hero-content { max-width: 1050px; margin: 0 auto; }
-.header-row {
+.hero-content {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.8rem;
-  flex-wrap: wrap;
+  flex-direction: column; 
+  align-items: center; 
+  max-width: 1050px;
+  margin: 0 auto;
 }
-.title-small { 
-  margin: 0;
-  font-weight: 900;
-  font-size: 2.2rem; 
-  letter-spacing: .5px;
-  line-height: 1.2;
+.main-header-block {
+  width: 100%;
+  text-align: center;
+}
+.header-row {
+  display: block;
+  text-align: center;
+  margin-bottom: 0.8rem;
+  width: 100%;
+}
+.title-small {
+    margin: 0;
+    font-weight: 900;
+    font-size: 2.2rem; 
+    letter-spacing: .5px;
+    line-height: 1.2;
+    text-align: center;
+    flex-grow: unset;
+    padding: 0 10px;
 }
 .auth-info {
-  display: flex;
-  align-items: center;
-  gap: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px; 
+}
+.auth-info-row {
+    width: 100%;
+    text-align: center;
+    margin-top: 1rem;
 }
 .user-email {
   font-size: 0.9rem;
   opacity: 0.8;
   white-space: nowrap;
   font-weight: 500;
+}
+.subtitle {
+    text-align: center;
 }
 .logout-btn {
   padding: .4rem 1rem;
