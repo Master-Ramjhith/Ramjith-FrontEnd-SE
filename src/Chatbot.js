@@ -1,12 +1,11 @@
+// Chatbot.js
+
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
-// -----------------------------------------------------------------------------
 // CONSTANTS & CONFIGURATION
-// -----------------------------------------------------------------------------
-
-// Defines the bot's persona and constraints for short, layman-term answers.
-const SYSTEM_INSTRUCTION = `You are the 'Resume Assistant' for a 'Dynamic Resume Analyzer' website. 
-Your goal is to provide short, sweet, easy-to-read, layman-term answers for common people. Keep all responses under 3 sentences maximum, using simple language.
+const BASE_SYSTEM_INSTRUCTION = `You are the 'Resume Assistant' for a 'Dynamic Resume Analyzer' website. 
+Your goal is to provide short, sweet, easy-to-read, layman-term answers for common people.
+Keep all responses under 3 sentences maximum, using simple language.
 Your expertise is focused on career development and resume best practices. 
 You MUST answer questions related to:
 1. Resume and ATS best practices.
@@ -15,87 +14,120 @@ You MUST answer questions related to:
 4. Reddit for career advice or job searching, and writing posts.
 5. Basic Git and GitHub commands for career development (e.g., clone, commit, pull).
 6. Website features, key concepts (like JD or ATS), and general user queries.
+For any question outside these 6 topics, simply respond with a helpful message:
+"I'm only trained to help with website features, resume, social media, or basic GitHub questions.
+What can I help you with in those areas?"`;
 
-For any question outside these 6 topics, simply respond with a helpful message: "I'm only trained to help with website features, resume, social media, or basic GitHub questions. What can I help you with in those areas?"`;
-
-// NOTE: This key is left as provided. In a production environment, use a secure backend.
-const GEMINI_API_KEY = "AIzaSyClMB2V__ZqmcaTHbQiK5DdpekAKVIDeRQ"; 
+// UPDATED API Key
+const GEMINI_API_KEY = "AIzaSyBRFIQTuvanFhK4CJJHVJUkZ_rfJUeNwxQ"; 
 
 const INITIAL_MESSAGE = { 
   type: "bot", 
   text: "Hello! I’m your Resume Assistant 👋 How can I help you improve your ATS score or with career social media?" 
 };
 
-// -----------------------------------------------------------------------------
-// CUSTOM HOOK: useChatLogic (Agile Logic and API Handler)
-// -----------------------------------------------------------------------------
+// FALLBACK MESSAGE for user-facing errors
+const FALLBACK_MESSAGE = "I'm sorry, I'm currently having trouble connecting to the AI service. Please try asking again in a moment, or ask a different question about your resume or social media.";
 
-/**
- * Handles all state management and core interaction logic for the chatbot.
- * This separation makes the component scalable and testable.
- */
-function useChatLogic() {
+
+// CUSTOM HOOK: useChatLogic for conversation state and API handling
+function useChatLogic(resumeContext) {
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // Helper to convert internal message format to Gemini's 'Content' format
+  const toGeminiContent = (msg) => ({
+    role: msg.type === "user" ? "user" : "model",
+    parts: [{ text: msg.text }],
+  });
 
   // Function to interact with the Gemini API
-  const getBotReply = useCallback(async (text) => {
-    // Fail fast if API key is missing
+  const getBotReply = useCallback(async (history) => {
     if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_API_KEY_HERE") {
-      return "⚠️ Gemini API key is missing. Please add the key to the `Chatbot.js` file to enable AI responses.";
+        console.error("Gemini API key is missing.");
+        return FALLBACK_MESSAGE;
     }
 
+    // 1. CONTEXT STUFFING: Inject personalized data into the system instruction
+    const { userEmail, resumeText, analysisSummary } = resumeContext;
+    const userContext = `\n\n--- CURRENT USER & RESUME CONTEXT ---\n`;
+    
+    let context_parts = [`User's Email: ${userEmail || 'N/A'}`]; 
+    
+    if (resumeText) {
+        context_parts.push(`User's Resume Content (first 400 chars): \n"${resumeText.substring(0, 400)}..."`);
+    }
+
+    if (analysisSummary) {
+        context_parts.push(`Latest Resume Analysis Summary: ${analysisSummary}`);
+    }
+
+    const fullSystemInstruction = `${BASE_SYSTEM_INSTRUCTION}${userContext}${context_parts.join('\n')}`;
+
     try {
-      // Define the API endpoint
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-      
-      // Agentic Prompt Stuffing: Combine the SYSTEM_INSTRUCTION with the user's query.
-      const fullPrompt = `${SYSTEM_INSTRUCTION}\n\nUser Question: ${text}`;
+
+      // MULTI-TURN CHAT: Build the contents array with the entire history
+      const conversationHistory = history
+        .filter(m => m.text !== "<em>Typing…</em>")
+        .map(toGeminiContent);
 
       const payload = {
-        contents: [{ parts: [{ text: fullPrompt }] }],
+        system_instruction: { parts: [{ text: fullSystemInstruction }] }, 
+        contents: conversationHistory, 
       };
-      
+
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      
+
       const data = await response.json();
       
+      // Check for success: API returns a valid response
       if (data?.candidates?.[0]?.content?.parts) {
-        // Extract and join all text parts from the response
         return data.candidates[0].content.parts.map((p) => p.text).join(" ");
-      } else if (data?.error) {
-        // Handle explicit API errors
-        return `I had trouble connecting to the AI brain. Try asking a different way. (API Error: ${data.error.message})`;
+      } 
+      
+      // Check for API errors (like 503 or quota errors)
+      if (data?.error) {
+        // Log the technical error to the console (as requested)
+        console.error("Gemini API Error:", data.error.message);
+        // Return the user-friendly fallback message
+        return FALLBACK_MESSAGE;
       }
       
-      return "Sorry, I couldn't generate a response. Please try again.";
+      // General failure catch (e.g., malformed response)
+      console.error("Unknown Gemini API response structure:", data);
+      return FALLBACK_MESSAGE;
       
     } catch (err) {
-      // Handle network errors
-      return "Oops! I can't reach the server right now. Check your internet connection. (Network Error)";
+      // Handle network errors (e.g., failed to load resource)
+      console.error("Network or Fetch Error:", err.message);
+      return FALLBACK_MESSAGE;
     }
-  }, []);
+  }, [resumeContext]);
 
   // Main function to handle user message submission
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
-    
+
     // 1. Add user message, clear input
-    setMessages((prev) => [...prev, { type: "user", text }]);
+    const newUserMessage = { type: "user", text };
+    setMessages((prev) => [...prev, newUserMessage]);
     setInput("");
     setLoading(true);
 
-    // 2. Add "typing" placeholder (using <em> for visual effect)
+    const fullHistoryWithNewMessage = [...messages, newUserMessage]; 
+
+    // 2. Add "typing" placeholder 
     setMessages((prev) => [...prev, { type: "bot", text: "<em>Typing…</em>" }]);
     
-    // 3. Get reply from AI
-    let reply = await getBotReply(text);
+    // 3. Get reply from AI, passing the full history
+    let reply = await getBotReply(fullHistoryWithNewMessage);
 
     // 4. Replace placeholder with final reply
     setMessages((prev) => [
@@ -103,35 +135,27 @@ function useChatLogic() {
       { type: "bot", text: reply },
     ]);
     setLoading(false);
-  }, [input, loading, getBotReply]);
+  }, [input, loading, getBotReply, messages]);
   
   return { messages, input, loading, setInput, send };
 }
 
 
-// -----------------------------------------------------------------------------
 // CHATBOT COMPONENT (UI Layer)
-// -----------------------------------------------------------------------------
-
-/**
- * Chatbot component handles the rendering and user interaction (presentational).
- */
-export default function Chatbot({ onClose, isOpen })  {
-  // Use the custom hook for all component logic
-  const { messages, input, loading, setInput, send } = useChatLogic();
+export default function Chatbot({ onClose, isOpen, resumeContext })  {
+  const { messages, input, loading, setInput, send } = useChatLogic(resumeContext);
   const messagesEndRef = useRef(null);
-  
-  // Scrolls to the latest message whenever the messages array updates
+
+  // Scrolls to the latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
+  
   // Utility to safely parse simple markdown (*bold*)
   const parseMessage = (text) => {
-    // Replaces *text* with <strong>text</strong>
     return text.replace(/\*(.*?)\*/g, "<strong>$1</strong>");
   }
-
+  
   return (
     <div className={`chatbot-container ${isOpen ? 'open' : ''}`}>
       <div className="chatbot">
@@ -144,7 +168,6 @@ export default function Chatbot({ onClose, isOpen })  {
             <div
               key={i}
               className={`chat-message ${m.type}`}
-              // Render parsed content (markdown, typing effect <em>)
               dangerouslySetInnerHTML={{ __html: parseMessage(m.text) }}
             />
           ))}
@@ -156,7 +179,6 @@ export default function Chatbot({ onClose, isOpen })  {
             value={input}
             disabled={loading}
             onChange={(e) => setInput(e.target.value)}
-            // Call send() on 'Enter' key press
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Ask about ATS, keywords, format…"
             aria-label="Chat input"
