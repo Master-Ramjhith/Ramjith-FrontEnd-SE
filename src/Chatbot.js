@@ -2,9 +2,13 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
-// CONSTANTS & CONFIGURATION
+// ------------------------------------
+// I. CONSTANTS & CONFIGURATION
+// ------------------------------------
+
 const BASE_SYSTEM_INSTRUCTION = `You are the 'Resume Assistant' for a 'Dynamic Resume Analyzer' website. 
 Your goal is to provide short, sweet, easy-to-read, layman-term answers for common people.
+**Crucially, use an actual numbered or bulleted list for steps or multiple distinct points.**
 Keep all responses under 3 sentences maximum, using simple language.
 Your expertise is focused on career development and resume best practices. 
 You MUST answer questions related to:
@@ -18,19 +22,24 @@ For any question outside these 6 topics, simply respond with a helpful message:
 "I'm only trained to help with website features, resume, social media, or basic GitHub questions.
 What can I help you with in those areas?"`;
 
-// UPDATED API Key
+// NOTE: Please replace with a securely stored environment variable in a real app.
 const GEMINI_API_KEY = "AIzaSyBRFIQTuvanFhK4CJJHVJUkZ_rfJUeNwxQ"; 
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
 
 const INITIAL_MESSAGE = { 
   type: "bot", 
-  text: "Hello! I’m your Resume Assistant 👋 How can I help you improve your ATS score or with career social media?" 
+  text: "Hello! I’m your **Resume Assistant** 👋 How can I help you improve your ATS score or with career social media?" 
 };
 
-// FALLBACK MESSAGE for user-facing errors
+// FALLBACK MESSAGE for user-facing errors (Static Answer for API Failure)
 const FALLBACK_MESSAGE = "I'm sorry, I'm currently having trouble connecting to the AI service. Please try asking again in a moment, or ask a different question about your resume or social media.";
 
 
-// CUSTOM HOOK: useChatLogic for conversation state and API handling
+// ------------------------------------
+// II. CUSTOM HOOK: useChatLogic
+// ------------------------------------
+
 function useChatLogic(resumeContext) {
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
@@ -66,19 +75,21 @@ function useChatLogic(resumeContext) {
     const fullSystemInstruction = `${BASE_SYSTEM_INSTRUCTION}${userContext}${context_parts.join('\n')}`;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
       // MULTI-TURN CHAT: Build the contents array with the entire history
       const conversationHistory = history
-        .filter(m => m.text !== "<em>Typing…</em>")
+        .filter(m => m.text !== "<em>Typing…</em>") // Exclude the typing placeholder
         .map(toGeminiContent);
 
+      // 💥 CRITICAL FIX: Revert to the correct payload structure for the REST API.
+      // system_instruction must be a top-level field, not nested inside 'config'.
       const payload = {
-        system_instruction: { parts: [{ text: fullSystemInstruction }] }, 
+        system_instruction: { 
+            parts: [{ text: fullSystemInstruction }] 
+        }, 
         contents: conversationHistory, 
       };
 
-      const response = await fetch(url, {
+      const response = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -86,25 +97,23 @@ function useChatLogic(resumeContext) {
 
       const data = await response.json();
       
-      // Check for success: API returns a valid response
+      // Check for success
       if (data?.candidates?.[0]?.content?.parts) {
         return data.candidates[0].content.parts.map((p) => p.text).join(" ");
       } 
       
-      // Check for API errors (like 503 or quota errors)
+      // Check for API errors (handles the 400 response and returns fallback)
       if (data?.error) {
-        // Log the technical error to the console (as requested)
         console.error("Gemini API Error:", data.error.message);
-        // Return the user-friendly fallback message
         return FALLBACK_MESSAGE;
       }
       
-      // General failure catch (e.g., malformed response)
+      // General failure catch
       console.error("Unknown Gemini API response structure:", data);
       return FALLBACK_MESSAGE;
       
     } catch (err) {
-      // Handle network errors (e.g., failed to load resource)
+      // Handle network errors
       console.error("Network or Fetch Error:", err.message);
       return FALLBACK_MESSAGE;
     }
@@ -117,11 +126,10 @@ function useChatLogic(resumeContext) {
 
     // 1. Add user message, clear input
     const newUserMessage = { type: "user", text };
-    setMessages((prev) => [...prev, newUserMessage]);
+    const fullHistoryWithNewMessage = [...messages, newUserMessage]; 
+    setMessages(fullHistoryWithNewMessage);
     setInput("");
     setLoading(true);
-
-    const fullHistoryWithNewMessage = [...messages, newUserMessage]; 
 
     // 2. Add "typing" placeholder 
     setMessages((prev) => [...prev, { type: "bot", text: "<em>Typing…</em>" }]);
@@ -141,7 +149,56 @@ function useChatLogic(resumeContext) {
 }
 
 
-// CHATBOT COMPONENT (UI Layer)
+// ------------------------------------
+// III. CHATBOT COMPONENT (UI Layer)
+// ------------------------------------
+
+/**
+ * Utility to safely parse simple markdown (*bold*, **list items**) 
+ * and convert them into HTML for rendering.
+ */
+const parseMessage = (text) => {
+    // 1. Convert simple markdown bolding (*word* -> <strong>word</strong>)
+    let html = text.replace(/\*(.*?)\*/g, "<strong>$1</strong>");
+    
+    // 2. Bullet Point / List Fix: Convert lines starting with * or 1. etc. to <ul>/<li>
+    const lines = html.split('\n');
+    let inList = false;
+    const processedLines = lines.map(line => {
+        const trimmed = line.trim();
+        // Check for list item pattern: * item or 1. item
+        if (trimmed.match(/^(\*|\d+\.)\s/)) {
+            const listItemContent = trimmed.substring(trimmed.indexOf(' ') + 1);
+            
+            // Start of list
+            if (!inList) {
+                inList = true;
+                // Use <ul> for both * and 1. style for simplicity in this parser
+                return `<ul><li>${listItemContent}</li>`;
+            }
+            // Continuation of list
+            return `<li>${listItemContent}</li>`;
+        } else {
+            // End of list
+            if (inList) {
+                inList = false;
+                // Close list and then add the regular line
+                return `</ul>${line}`; 
+            }
+            // Regular line
+            return line; 
+        }
+    });
+
+    // Close any unclosed list at the end
+    if (inList) {
+        processedLines.push('</ul>');
+    }
+
+    return processedLines.join('<br/>'); // Join with break tags for multiline output
+}
+
+
 export default function Chatbot({ onClose, isOpen, resumeContext })  {
   const { messages, input, loading, setInput, send } = useChatLogic(resumeContext);
   const messagesEndRef = useRef(null);
@@ -151,10 +208,6 @@ export default function Chatbot({ onClose, isOpen, resumeContext })  {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
   
-  // Utility to safely parse simple markdown (*bold*)
-  const parseMessage = (text) => {
-    return text.replace(/\*(.*?)\*/g, "<strong>$1</strong>");
-  }
   
   return (
     <div className={`chatbot-container ${isOpen ? 'open' : ''}`}>
@@ -168,6 +221,7 @@ export default function Chatbot({ onClose, isOpen, resumeContext })  {
             <div
               key={i}
               className={`chat-message ${m.type}`}
+              // **SECURITY NOTE: Ensure 'parseMessage' only handles simple, safe markdown**
               dangerouslySetInnerHTML={{ __html: parseMessage(m.text) }}
             />
           ))}
