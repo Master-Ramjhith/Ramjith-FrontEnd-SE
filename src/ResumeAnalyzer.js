@@ -187,7 +187,7 @@ const analyzeData = (resumeText, jobDescription) => {
   
 
 // --- Component ---
-export default function ResumeAnalyzer({ userEmail }) { 
+export default function ResumeAnalyzer({ userEmail, onDataChange }) {
     const [resumeText, setResumeText] = useState("");
     const [jobDescription, setJobDescription] = useState("");
     const [analysis, setAnalysis] = useState(null); 
@@ -198,24 +198,26 @@ export default function ResumeAnalyzer({ userEmail }) {
     const [isProcessing, setIsProcessing] = useState(false);
     const previewRef = useRef(null);
     const fileInputRef = useRef(null);
-    
-
-    // Initial Load Effect (Loads data only)
-    useEffect(() => {
+        useEffect(() => {
         if (!userEmail) return; 
         const storedData = getResumeData(userEmail);
         if (storedData) {
             setResumeText(storedData.resume);
             setJobDescription(storedData.jd);
-            // Re-run analysis on load using stored data
             const newAnalysis = analyzeData(storedData.resume, storedData.jd);
-            setAnalysis(newAnalysis); 
+            setAnalysis(newAnalysis);
+            onDataChange({ 
+                resumeText: storedData.resume, 
+                analysisSummary: `ATS Score: ${newAnalysis.atsScore}%. Missing Sections: ${newAnalysis.missing.join(', ')}. Weak Words: ${newAnalysis.weakWordCount}.`,
+                userEmail, 
+            });
         } else {
             setResumeText("");
             setJobDescription("");
             setAnalysis(null);
+            onDataChange({ resumeText: "", analysisSummary: null, userEmail });
         }
-    }, [userEmail]);
+    }, [userEmail, onDataChange]); 
     
     // Manual Analysis Handler
     const handleAnalyzeClick = () => {
@@ -225,12 +227,14 @@ export default function ResumeAnalyzer({ userEmail }) {
             return;
         }
         setFileError(null); 
-        
         const newAnalysis = analyzeData(resumeText, jobDescription);
         setAnalysis(newAnalysis); 
-
-        storeResumeData(userEmail, resumeText, jobDescription); 
-        
+        storeResumeData(userEmail, resumeText, jobDescription);
+        onDataChange({
+            resumeText: resumeText, 
+            analysisSummary: `ATS Score: ${newAnalysis.atsScore}%. Missing Sections: ${newAnalysis.missing.join(', ')}. Weak Words: ${newAnalysis.weakWordCount}.`,
+            userEmail,
+        });
         setTimeout(() => {
             document.querySelector('.ats-analysis-card')?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
@@ -280,7 +284,7 @@ export default function ResumeAnalyzer({ userEmail }) {
         if (missing.length > 0) {
             list.push(`
                 <span class="feedback-icon bad">✖</span> 
-                <strong>Structure Deficiency:</strong> Missing core sections: 
+                <strong>Structure Deficiency &Completeness:</strong> Missing core sections: 
                 <strong>${missing.map(s => s.toUpperCase()).join(", ")}</strong>. 
                 <div class="advice">
                     <strong>Advice:</strong> Add these sections explicitly to ensure ATS coverage. 
@@ -563,32 +567,6 @@ export default function ResumeAnalyzer({ userEmail }) {
                     </>
                 )}
             </section>
-            
-            {/* Minimal Chatbot components retained for a complete React structure */}
-            <button 
-                type="button" 
-                className={`fab ${false ? 'fab-active' : ''}`} 
-                onClick={() => { console.log('Chatbot FAB clicked'); }}
-                title={"Open Chatbot"}
-            >
-                {'💬'}
-            </button>
-
-            <div className={`chatbot-container ${false ? 'open' : ''}`}>
-                <div className="chatbot">
-                    <div className="chat-header">
-                        <h3>🤖 Resume AI Assistant</h3>
-                        <button className="x" onClick={() => {}} title="Close Chat">✕</button>
-                    </div>
-                    <div className="chat-messages">
-                        <div className="chat-message bot">Hello! I can help you with your resume analysis. Ask me about your score or missing keywords!</div>
-                    </div>
-                    <div className="chat-input-row">
-                        <input type="text" placeholder="Type your message..." disabled />
-                        <button disabled>Send</button>
-                    </div>
-                </div>
-            </div>
         </React.Fragment>
     );
 }
